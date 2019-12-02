@@ -1,0 +1,184 @@
+service:
+  name: xrpl-etl
+
+plugins:
+  - serverless-webpack
+  - serverless-prune-plugin
+  - serverless-dotenv-plugin
+
+custom:
+  myStage: ${opt:stage, self:provider.stage}
+  defaultStage: dev
+  webpack:
+    webpackConfig: ./webpack.config.js
+    includeModules: true
+  prune:
+    automatic: true
+    number: 3
+
+provider:
+  name: aws
+  runtime: nodejs10.x
+  logRetentionInDays: 3
+  apiGateway:
+    minimumCompressionSize: 1024 # Enable gzip compression for responses > 1 KB
+  environment:
+    AWS_NODEJS_CONNECTION_REUSE_ENABLED: 1
+    STAGE: ${self:custom.myStage}
+    DYNAMODB_UNLSNAPSHOT_TABLE: ${self:service}-unlsnapshot-${opt:stage, self:provider.stage} 
+    DYNAMODB_UNLHISTORY_TABLE: ${self:service}-unlhistory-${opt:stage, self:provider.stage} 
+    DYNAMODB_VALIDATOR_TABLE: ${self:service}-validator-${opt:stage, self:provider.stage} 
+    DYNAMODB_VALIDATORREPORT_TABLE: ${self:service}-validatorreport-${opt:stage, self:provider.stage} 
+    DYNAMODB_MANIFEST_TABLE: ${self:service}-manifest-${opt:stage, self:provider.stage} 
+    DYNAMODB_LOCATION_TABLE: ${self:service}-location-${opt:stage, self:provider.stage} 
+    UNL_HOSTS: vl.ripple.com, vl.coil.com
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - dynamodb:Query
+        - dynamodb:Scan
+        - dynamodb:GetItem
+        - dynamodb:PutItem
+        - dynamodb:BatchWriteItem
+        - dynamodb:UpdateItem
+        - dynamodb:DeleteItem
+      Resource: "arn:aws:dynamodb:${opt:region, self:provider.region}:*:table/*"
+
+functions:
+  importValidator:
+    handler: handler.importValidator
+    events:
+      - schedule: rate(5 minutes) 
+  importValidatorReport:
+    handler: handler.importValidatorReport
+  importManifest:
+    handler: handler.importManifest
+    events:
+      - schedule: rate(24 hours) 
+  importUnl:
+    handler: handler.importUnl
+    events:
+      - schedule: rate(5 minutes) 
+  importLocation:
+    handler: handler.importLocation
+    events:
+      - schedule: rate(24 hours) 
+  importUnlHistory:
+    handler: handler.importUnlHistory
+
+resources:
+  Resources:
+    Validator:
+      Type: 'AWS::DynamoDB::Table'
+      DeletionPolicy: Retain
+      Properties:
+        AttributeDefinitions:
+          -
+            AttributeName: validator_public_key 
+            AttributeType: S
+        KeySchema:
+          -
+            AttributeName: validator_public_key 
+            KeyType: HASH 
+        ProvisionedThroughput:
+          ReadCapacityUnits: 1
+          WriteCapacityUnits: 1
+        TableName: "${self:provider.environment.DYNAMODB_VALIDATOR_TABLE}"
+    ValidatorReport:
+      Type: 'AWS::DynamoDB::Table'
+      DeletionPolicy: Retain
+      Properties:
+        AttributeDefinitions:
+          -
+            AttributeName: validator_public_key 
+            AttributeType: S
+          -
+            AttributeName: date 
+            AttributeType: S
+        KeySchema:
+          -
+            AttributeName: validator_public_key 
+            KeyType: HASH 
+          -
+            AttributeName: date 
+            KeyType: RANGE 
+        ProvisionedThroughput:
+          ReadCapacityUnits: 1
+          WriteCapacityUnits: 1
+        TableName: "${self:provider.environment.DYNAMODB_VALIDATORREPORT_TABLE}"
+    Manifest:
+      Type: 'AWS::DynamoDB::Table'
+      DeletionPolicy: Retain
+      Properties:
+        AttributeDefinitions:
+          -
+            AttributeName: validator_public_key 
+            AttributeType: S
+        KeySchema:
+          -
+            AttributeName: validator_public_key 
+            KeyType: HASH 
+        ProvisionedThroughput:
+          ReadCapacityUnits: 1
+          WriteCapacityUnits: 1
+        TableName: "${self:provider.environment.DYNAMODB_MANIFEST_TABLE}"
+    UnlSnapshot:
+      Type: 'AWS::DynamoDB::Table'
+      DeletionPolicy: Retain
+      Properties:
+        AttributeDefinitions:
+          -
+            AttributeName: host 
+            AttributeType: S
+          -
+            AttributeName: validator_public_key 
+            AttributeType: S
+        KeySchema:
+          -
+            AttributeName: host 
+            KeyType: HASH
+          -
+            AttributeName: validator_public_key 
+            KeyType: RANGE
+        ProvisionedThroughput:
+          ReadCapacityUnits: 1
+          WriteCapacityUnits: 1
+        TableName: "${self:provider.environment.DYNAMODB_UNLSNAPSHOT_TABLE}"
+    Location:
+      Type: 'AWS::DynamoDB::Table'
+      DeletionPolicy: Retain
+      Properties:
+        AttributeDefinitions:
+          -
+            AttributeName: domain
+            AttributeType: S
+        KeySchema:
+          -
+            AttributeName: domain 
+            KeyType: HASH 
+        ProvisionedThroughput:
+          ReadCapacityUnits: 1
+          WriteCapacityUnits: 1
+        TableName: "${self:provider.environment.DYNAMODB_LOCATION_TABLE}"
+    UnlHistory:
+      Type: 'AWS::DynamoDB::Table'
+      DeletionPolicy: Retain
+      Properties:
+        AttributeDefinitions:
+          -
+            AttributeName: date
+            AttributeType: S
+          -
+            AttributeName: validator_public_key 
+            AttributeType: S
+        KeySchema:
+          -
+            AttributeName: date 
+            KeyType: HASH
+          -
+            AttributeName: validator_public_key 
+            KeyType: RANGE
+        ProvisionedThroughput:
+          ReadCapacityUnits: 1
+          WriteCapacityUnits: 1
+        TableName: "${self:provider.environment.DYNAMODB_UNLHISTORY_TABLE}"
