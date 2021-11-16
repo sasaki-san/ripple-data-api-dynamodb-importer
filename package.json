@@ -8,7 +8,7 @@
   },
   "dependencies": {
     "@octokit/rest": "^16.35.0",
-    "aws-sdk": "^2.580.0",
+    "aws-sdk": "^2.814.0",
     "base-64": "^0.1.0",
     "base-x": "^3.0.7",
     "request": "^2.88.0",
